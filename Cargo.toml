@@ -18,7 +18,7 @@ embedded-cio-ra = []
 [build-dependencies]
 bindgen = "0.72"
 cc = "1.1"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+minreq = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]

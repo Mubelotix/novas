@@ -98,18 +98,20 @@ fn target_cache_dir(manifest_dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 }
 
 fn download_archive(destination: &Path) -> Result<(), Box<dyn Error>> {
-	let response = reqwest::blocking::get(NOVAS_URL)?;
-	let response = response.error_for_status()?;
-	let content = response.bytes()?;
-	fs::write(destination, content.as_ref())?;
+	let response = minreq::get(NOVAS_URL).send()?;
+	if response.status_code != 200 {
+		return Err(format!("failed to download archive from {NOVAS_URL}: HTTP {}", response.status_code).into());
+	}
+	fs::write(destination, response.as_bytes())?;
 	Ok(())
 }
 
 fn download_file(url: &str, destination: &Path) -> Result<(), Box<dyn Error>> {
-	let response = reqwest::blocking::get(url)?;
-	let response = response.error_for_status()?;
-	let content = response.bytes()?;
-	fs::write(destination, content.as_ref())?;
+	let response = minreq::get(url).send()?;
+	if response.status_code != 200 {
+		return Err(format!("failed to download file from {url}: HTTP {}", response.status_code).into());
+	}
+	fs::write(destination, response.as_bytes())?;
 	Ok(())
 }
 
