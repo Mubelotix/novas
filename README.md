@@ -2,22 +2,23 @@
 
 Rust bindings for the U.S. Naval Observatory NOVAS C3.1 astrometry library.
 
-This crate is designed to keep Rust-side logic minimal and preserve NOVAS as the numerical source of truth.
+This project aims to be both the raw `sys` crate and the safer Rust-facing wrapper around NOVAS.
+The bindings stay close to the upstream C source, and the root API is where the Rust side can become more convenient over time.
 
 ## API shape
 
-This project aims to provide two views of the same NOVAS API:
+The crate exposes the same NOVAS functions in two places:
 
 - `novas::sys` contains the raw bindings, closely matching the generated C interface.
-- The crate root re-exports the same functions with a more Rust-friendly surface where possible.
+- The crate root exposes the same functions again, with a Rust-friendly surface where possible.
 
-Every function is available in both places. The `sys` module is the stable low-level layer, and the root layer is the place where the interface may keep improving over time.
+Every function is available in both places. `sys` is the low-level layer; the root is the place where the interface may keep improving over time.
 
 ## Why trust the results
 
-- Core astrometric calculations are performed by upstream NOVAS C code.
-- This crate is a binding layer, not a rewrite of the scientific algorithms.
-- Native and WASM test suites include parity checks against known upstream reference outputs.
+- The astronomy math comes from upstream NOVAS C code.
+- This crate does not reimplement the scientific algorithms in Rust.
+- Native and WASM tests check the Rust bindings against known upstream reference outputs.
 
 ## Attribution
 
@@ -35,12 +36,12 @@ let theta = unsafe { novas::era(2451545.0, 0.0) };
 println!("ERA: {theta}");
 ```
 
-Most APIs are unsafe FFI calls by design.
+Most APIs are unsafe because they are direct FFI calls.
 
 ## Platforms
 
 - Native targets are supported.
-- WASM is supported (including wasm-bindgen workflows).
+- WASM is supported, including wasm-bindgen workflows.
 
 Build for WASM:
 
@@ -50,17 +51,12 @@ cargo build --target wasm32-unknown-unknown
 
 ## WASM file support
 
-Some NOVAS code paths read binary files such as cio_ra.bin. On wasm32-unknown-unknown, this crate provides a virtual file mechanism.
+Some NOVAS code paths read binary files such as `cio_ra.bin`. On `wasm32-unknown-unknown`, this crate keeps those code paths working with a virtual file layer.
 
-- By default, cio_ra.bin is embedded automatically.
-- You can register your own bundled files at runtime:
+- `cio_ra.bin` is embedded by default.
+- If you want a smaller WASM binary, disable default embedding and provide only the files you need.
 
-```rust
-const DE440: &[u8] = include_bytes!("../data/de440.bin");
-novas::register_virtual_file("de440.bin", DE440);
-```
-
-For smaller WASM binaries, disable default embedding and register files yourself:
+Example:
 
 ```bash
 cargo build --target wasm32-unknown-unknown --no-default-features
