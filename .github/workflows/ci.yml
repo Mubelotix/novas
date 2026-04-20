@@ -58,3 +58,6 @@ jobs:
 
       - name: Run wasm virtual-file I/O test
         run: cargo test --target wasm32-unknown-unknown --test wasm_virtual_file
+
+      - name: Run wasm embedded cio-ra truth test
+        run: cargo test --target wasm32-unknown-unknown --test wasm_cio_truth

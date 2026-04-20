@@ -107,6 +107,12 @@ Run WASM virtual-file I/O coverage (verifies registered in-memory file bytes are
 cargo test --target wasm32-unknown-unknown --test wasm_virtual_file
 ```
 
+Run WASM embedded-file truth coverage (verifies default embedded `cio_ra.bin` decodes to exact upstream reference rows):
+
+```bash
+cargo test --target wasm32-unknown-unknown --test wasm_cio_truth
+```
+
 The test executes through `wasm-bindgen-test-runner` and `node`, so no Selenium/WebDriver setup is required.
 
 If the runner is not installed yet:
