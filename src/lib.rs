@@ -4,7 +4,17 @@
 #![allow(non_upper_case_globals)]
 #![allow(clippy::all)]
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+pub mod sys {
+	#![allow(non_camel_case_types)]
+	#![allow(non_snake_case)]
+	#![allow(non_upper_case_globals)]
+	#![allow(clippy::all)]
+
+	include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+}
+
+include!(concat!(env!("OUT_DIR"), "/root_reexports.rs"));
+include!(concat!(env!("OUT_DIR"), "/convenience.rs"));
 
 /// Upstream NOVAS C version used by this crate.
 pub const NOVAS_UPSTREAM_VERSION: &str = env!("NOVAS_UPSTREAM_VERSION");
