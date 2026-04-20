@@ -16,3 +16,7 @@ bindgen = "0.72"
 cc = "1.1"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = "3.20"
+zip = { version = "2", default-features = false, features = ["deflate"] }

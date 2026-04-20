@@ -8,3 +8,6 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 /// Upstream NOVAS C version used by this crate.
 pub const NOVAS_UPSTREAM_VERSION: &str = env!("NOVAS_UPSTREAM_VERSION");
+
+/// Absolute path to the cached upstream NOVAS archive used for this build.
+pub const NOVAS_ARCHIVE_PATH: &str = env!("NOVAS_ARCHIVE_PATH");

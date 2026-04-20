@@ -49,6 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	}
 
 	println!("cargo:rustc-env=NOVAS_UPSTREAM_VERSION={NOVAS_UPSTREAM_VERSION}");
+	println!("cargo:rustc-env=NOVAS_ARCHIVE_PATH={}", archive_path.display());
 
 	Ok(())
 }
