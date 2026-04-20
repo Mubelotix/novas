@@ -4,6 +4,15 @@ Rust bindings for the U.S. Naval Observatory NOVAS C3.1 astrometry library.
 
 This crate is designed to keep Rust-side logic minimal and preserve NOVAS as the numerical source of truth.
 
+## API shape
+
+This project aims to provide two views of the same NOVAS API:
+
+- `novas::sys` contains the raw bindings, closely matching the generated C interface.
+- The crate root re-exports the same functions with a more Rust-friendly surface where possible.
+
+Every function is available in both places. The `sys` module is the stable low-level layer, and the root layer is the place where the interface may keep improving over time.
+
 ## Why trust the results
 
 - Core astrometric calculations are performed by upstream NOVAS C code.
