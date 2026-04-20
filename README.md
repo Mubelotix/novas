@@ -1,36 +1,24 @@
 # novas
 
-Rust bindings for the U.S. Naval Observatory's NOVAS C3.1 library.
+Rust bindings for the U.S. Naval Observatory NOVAS C3.1 astrometry library.
 
-This crate intentionally keeps Rust-side logic minimal and delegates astrometric correctness to the original NOVAS implementation.
+This crate is designed to keep Rust-side logic minimal and preserve NOVAS as the numerical source of truth.
+
+## Why trust the results
+
+- Core astrometric calculations are performed by upstream NOVAS C code.
+- This crate is a binding layer, not a rewrite of the scientific algorithms.
+- Native and WASM test suites include parity checks against known upstream reference outputs.
 
 ## Attribution
 
-NOVAS was developed and published by the Astronomical Applications Department of the U.S. Naval Observatory (USNO). This crate is a binding layer around NOVAS C3.1 and does not claim authorship of the underlying astrometry algorithms.
+NOVAS was developed and published by the Astronomical Applications Department of the U.S. Naval Observatory (USNO).
 
-The NOVAS User's Guide citation from upstream documentation is:
+User's Guide citation from upstream documentation:
 
 Bangert, J., Puatua, W., Kaplan, G., Bartlett, J., Harris, W., Fredericks, A., & Monet, A. 2011, User's Guide to NOVAS Version C3.1 (Washington, DC: USNO).
 
-## Why this crate exists
-
-- Source-of-truth numerics come from the USNO NOVAS C code.
-- The upstream C code is not vendored in this repository.
-- `build.rs` downloads and caches `novasc3.1.zip` from:
-  - <https://ascl.net/assets/codes/NOVAS/novasc3.1.zip>
-- Bindings are generated directly from upstream headers using `bindgen`.
-
-## Build behavior
-
-During build, this crate:
-
-1. Downloads and caches `novasc3.1.zip` under `target/novas-cache` (or `$CARGO_TARGET_DIR/novas-cache` when set).
-2. Extracts sources into Cargo's `OUT_DIR`.
-3. Applies compatibility patch hooks (currently no patch required).
-4. Generates Rust FFI bindings from `novas.h`.
-5. Compiles NOVAS C objects into a static library for the selected target.
-
-## Usage
+## Quick start
 
 ```rust
 // Earth Rotation Angle for UT1 Julian date split into high/low components.
@@ -38,105 +26,69 @@ let theta = unsafe { novas::era(2451545.0, 0.0) };
 println!("ERA: {theta}");
 ```
 
-Most APIs are `unsafe` FFI calls by design.
+Most APIs are unsafe FFI calls by design.
 
-## Targets
+## Platforms
 
-- Native targets: links a static library compiled from upstream NOVAS C3.1.
-- WASM: builds for the browser and can be used from `wasm-bindgen` workflows.
+- Native targets are supported.
+- WASM is supported (including wasm-bindgen workflows).
 
-## WASM build
-
-Build with:
+Build for WASM:
 
 ```bash
 cargo build --target wasm32-unknown-unknown
 ```
 
-## WASM file I/O support
+## WASM file support
 
-NOVAS expects to open binary data files in some code paths (for example `cio_ra.bin`, and optionally JPL ephemeris files used through `ephem_open`).
+Some NOVAS code paths read binary files such as cio_ra.bin. On wasm32-unknown-unknown, this crate provides a virtual file mechanism.
 
-For `wasm32-unknown-unknown`, this crate provides an internal virtual file layer so those C `fopen`/`fread`/`fseek` calls work without host filesystem access.
-
-- `cio_ra.bin` is generated during build from upstream `CIO_RA.TXT` and embedded automatically when feature `embedded-cio-ra` is enabled (default).
-- Additional files can be bundled in Rust and registered at runtime:
+- By default, cio_ra.bin is embedded automatically.
+- You can register your own bundled files at runtime:
 
 ```rust
-// Example: bundle a JPL binary ephemeris in your wasm build.
 const DE440: &[u8] = include_bytes!("../data/de440.bin");
-
 novas::register_virtual_file("de440.bin", DE440);
-
-// Then pass the same filename to NOVAS ephemeris APIs, e.g. ephem_open.
 ```
 
-On native targets, `register_virtual_file` is a no-op and NOVAS reads from the host filesystem.
-
-To disable embedding of the default `cio_ra.bin` (for smaller wasm binaries), build without default features and register required files yourself:
+For smaller WASM binaries, disable default embedding and register files yourself:
 
 ```bash
 cargo build --target wasm32-unknown-unknown --no-default-features
 ```
 
-## WASM test
+## Tests
 
-This crate includes parity tests on both native and WASM targets. They compare Rust FFI outputs against a checked-in baseline generated from the upstream C implementation (native runs the fuller parity surface; WASM validates the shared core outputs).
-
-Regenerate the baseline (only when you intentionally update it):
-
-```bash
-./scripts/generate_parity_baseline.sh
-```
-
-Run native parity:
+Native parity:
 
 ```bash
 cargo test --test parity_against_c
 ```
 
-Run WASM parity:
+WASM parity:
 
 ```bash
 cargo test --target wasm32-unknown-unknown --test wasm_bindgen_smoke
 ```
 
-Run WASM virtual-file I/O coverage (verifies registered in-memory file bytes are used by NOVAS C `fopen`/`fread`/`fseek` path):
+WASM virtual-file test:
 
 ```bash
 cargo test --target wasm32-unknown-unknown --test wasm_virtual_file
 ```
 
-Run WASM embedded-file truth coverage (verifies default embedded `cio_ra.bin` decodes to exact upstream reference rows):
+WASM embedded-file truth test:
 
 ```bash
 cargo test --target wasm32-unknown-unknown --test wasm_cio_truth
 ```
 
-The test executes through `wasm-bindgen-test-runner` and `node`, so no Selenium/WebDriver setup is required.
-
-If the runner is not installed yet:
+If needed:
 
 ```bash
 cargo install wasm-bindgen-cli --version 0.2.118
 ```
 
-This repository configures `wasm-bindgen-test-runner` as the test runner for `wasm32-unknown-unknown` in `.cargo/config.toml`.
-
-## Upstream version
-
-`NOVAS_UPSTREAM_VERSION` is exported as a crate constant and currently equals `"3.1"`.
-
-## Correctness posture
-
-This crate does not reinterpret NOVAS algorithms in Rust. It focuses on:
-
-- faithful FFI exposure,
-- reproducible source acquisition,
-- and target compatibility mechanics.
-
-For scientific validation, users should still run NOVAS checkout programs against their deployment assumptions, as recommended by the upstream NOVAS documentation.
-
 ## AI policy
 
-While this Rust binding crate was generated by AI, the final binary artifacts produced from this crate **do not include AI model code**; numerical behavior comes from the downloaded NOVAS C source and the Rust compiler toolchain.
+This Rust binding crate was generated by AI, but final binaries do not include AI model code. Numerical behavior comes from upstream NOVAS C source and the Rust toolchain.
