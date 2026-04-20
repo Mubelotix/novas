@@ -9,6 +9,10 @@ readme = "README.md"
 links = "novas_c31"
 build = "build.rs"
 
+[features]
+default = ["embedded-cio-ra"]
+embedded-cio-ra = []
+
 [dependencies]
 
 [build-dependencies]

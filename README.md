@@ -59,7 +59,7 @@ NOVAS expects to open binary data files in some code paths (for example `cio_ra.
 
 For `wasm32-unknown-unknown`, this crate provides an internal virtual file layer so those C `fopen`/`fread`/`fseek` calls work without host filesystem access.
 
-- `cio_ra.bin` is generated during build from upstream `CIO_RA.TXT` and embedded automatically.
+- `cio_ra.bin` is generated during build from upstream `CIO_RA.TXT` and embedded automatically when feature `embedded-cio-ra` is enabled (default).
 - Additional files can be bundled in Rust and registered at runtime:
 
 ```rust
@@ -72,6 +72,12 @@ novas::register_virtual_file("de440.bin", DE440);
 ```
 
 On native targets, `register_virtual_file` is a no-op and NOVAS reads from the host filesystem.
+
+To disable embedding of the default `cio_ra.bin` (for smaller wasm binaries), build without default features and register required files yourself:
+
+```bash
+cargo build --target wasm32-unknown-unknown --no-default-features
+```
 
 ## WASM test
 

@@ -47,10 +47,21 @@ mod wasm_c_runtime_shims {
 	fn virtual_files() -> &'static Mutex<HashMap<String, Vec<u8>>> {
 		static FILES: OnceLock<Mutex<HashMap<String, Vec<u8>>>> = OnceLock::new();
 		FILES.get_or_init(|| {
-			let mut files = HashMap::new();
-			let cio_bin = include_bytes!(env!("NOVAS_CIO_RA_BIN_PATH")).to_vec();
-			files.insert("cio_ra.bin".to_string(), cio_bin.clone());
-			files.insert("./cio_ra.bin".to_string(), cio_bin);
+			let files = {
+				#[cfg(feature = "embedded-cio-ra")]
+				{
+					let mut files = HashMap::new();
+					let cio_bin = include_bytes!(env!("NOVAS_CIO_RA_BIN_PATH")).to_vec();
+					files.insert("cio_ra.bin".to_string(), cio_bin.clone());
+					files.insert("./cio_ra.bin".to_string(), cio_bin);
+					files
+				}
+
+				#[cfg(not(feature = "embedded-cio-ra"))]
+				{
+					HashMap::new()
+				}
+			};
 			Mutex::new(files)
 		})
 	}
