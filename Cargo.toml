@@ -1,10 +1,11 @@
 [package]
 name = "novas"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "GPL-3.0-only"
 description = "Rust bindings to United States Naval Observatory's NOVAS C3.1 astrometry library"
 readme = "README.md"
+repository = "https://github.com/Mubelotix/novas"
 links = "novas_c31"
 build = "build.rs"
 
