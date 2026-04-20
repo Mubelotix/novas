@@ -53,6 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	}
 
 	apply_compatibility_patches(&source_dir)?;
+	let cio_ra_bin_path = generate_cio_ra_bin(&source_dir, &out_dir)?;
 	generate_bindings(&source_dir, &out_dir, &host_target)?;
 	let mut emscripten_toolchain = None;
 
@@ -70,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		} else {
 			return Err(
 				format!(
-					"unsupported wasm target '{target}': use wasm32-unknown-unknown (with Emscripten-provided C runtime archives) or wasm32-unknown-emscripten"
+						"unsupported wasm target '{target}': use wasm32-unknown-unknown or wasm32-unknown-emscripten"
 				)
 				.into(),
 			);
@@ -83,6 +84,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 	println!("cargo:rustc-env=NOVAS_UPSTREAM_VERSION={NOVAS_UPSTREAM_VERSION}");
 	println!("cargo:rustc-env=NOVAS_ARCHIVE_PATH={}", archive_path.display());
+	println!("cargo:rustc-env=NOVAS_CIO_RA_BIN_PATH={}", cio_ra_bin_path.display());
 
 	Ok(())
 }
@@ -146,6 +148,64 @@ fn apply_compatibility_patches(source_dir: &Path) -> Result<(), Box<dyn Error>> 
 	Ok(())
 }
 
+fn generate_cio_ra_bin(source_dir: &Path, out_dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
+	let txt_path = source_dir.join("CIO_RA.TXT");
+	let txt = fs::read_to_string(&txt_path)?;
+
+	let mut rows = Vec::new();
+	for (line_number, line) in txt.lines().enumerate() {
+		if line_number == 0 {
+			continue;
+		}
+
+		let trimmed = line.trim();
+		if trimmed.is_empty() {
+			continue;
+		}
+
+		let mut parts = trimmed.split_whitespace();
+		let Some(jd_str) = parts.next() else {
+			continue;
+		};
+		let Some(ra_str) = parts.next() else {
+			return Err(format!("missing CIO_RA.TXT RA value on line {}", line_number + 1).into());
+		};
+
+		let jd: f64 = jd_str
+			.parse()
+			.map_err(|_| format!("invalid CIO_RA.TXT Julian date on line {}", line_number + 1))?;
+		let ra: f64 = ra_str
+			.parse()
+			.map_err(|_| format!("invalid CIO_RA.TXT RA value on line {}", line_number + 1))?;
+		rows.push((jd, ra));
+	}
+
+	if rows.is_empty() {
+		return Err("CIO_RA.TXT did not contain any data rows".into());
+	}
+
+	let jd_first = rows[0].0;
+	let jd_last = rows[rows.len() - 1].0;
+	let interval = if rows.len() > 1 { rows[1].0 - rows[0].0 } else { 0.0 };
+	let n_recs = i32::try_from(rows.len())
+		.map_err(|_| "CIO_RA.TXT row count does not fit into 32-bit long")?;
+
+	let mut bytes = Vec::with_capacity(3 * std::mem::size_of::<f64>() + std::mem::size_of::<i32>() + rows.len() * 2 * std::mem::size_of::<f64>());
+	bytes.extend_from_slice(&jd_first.to_le_bytes());
+	bytes.extend_from_slice(&jd_last.to_le_bytes());
+	bytes.extend_from_slice(&interval.to_le_bytes());
+	bytes.extend_from_slice(&n_recs.to_le_bytes());
+
+	for (jd, ra) in rows {
+		bytes.extend_from_slice(&jd.to_le_bytes());
+		bytes.extend_from_slice(&ra.to_le_bytes());
+	}
+
+	let out_path = out_dir.join("cio_ra.bin");
+	fs::write(&out_path, bytes)?;
+	Ok(out_path)
+}
+
 fn generate_bindings(source_dir: &Path, out_dir: &Path, host_target: &str) -> Result<(), Box<dyn Error>> {
 	let header = source_dir.join("novas.h");
 	let include_arg = format!("-I{}", source_dir.display());
@@ -196,44 +256,12 @@ fn compile_c_library(source_dir: &Path, target: &str, emscripten: Option<&Emscri
 }
 
 fn setup_wasm_unknown_linking(emcc: &Path) -> Result<(), Box<dyn Error>> {
-	let libc = emcc_print_file_name(emcc, "libc.a")?;
-	println!("cargo:rustc-link-arg={}", libc.display());
-
-	if let Some(libm) = emcc_print_file_name_optional(emcc, "libm.a")? {
-		println!("cargo:rustc-link-arg={}", libm.display());
-	}
-
-	if let Some(libcompiler_rt) = emcc_print_file_name_optional(emcc, "libcompiler_rt.a")? {
-		println!("cargo:rustc-link-arg={}", libcompiler_rt.display());
-	}
+	// For wasm32-unknown-unknown we deliberately avoid linking Emscripten runtime
+	// archives here. Pulling libc/compiler_rt archives in this mode introduces
+	// `env`/WASI host imports that are incompatible with wasm-bindgen test runner.
+	let _ = emcc;
 
 	Ok(())
-}
-
-fn emcc_print_file_name(emcc: &Path, name: &str) -> Result<PathBuf, Box<dyn Error>> {
-	let path = emcc_print_file_name_optional(emcc, name)?;
-	if let Some(path) = path {
-		return Ok(path);
-	}
-
-	Err(format!("Emscripten archive '{name}' was not found by emcc").into())
-}
-
-fn emcc_print_file_name_optional(emcc: &Path, name: &str) -> Result<Option<PathBuf>, Box<dyn Error>> {
-	let output = Command::new(emcc)
-		.arg(format!("-print-file-name={name}"))
-		.output()?;
-
-	if !output.status.success() {
-		return Err(format!("emcc failed while resolving '{name}'").into());
-	}
-
-	let path = String::from_utf8(output.stdout)?.trim().to_string();
-	if path.is_empty() || path == name {
-		return Ok(None);
-	}
-
-	Ok(Some(PathBuf::from(path)))
 }
 
 fn resolve_emscripten_toolchain(cache_dir: &Path) -> Result<EmscriptenToolchain, Box<dyn Error>> {

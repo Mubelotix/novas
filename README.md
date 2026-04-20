@@ -53,14 +53,52 @@ Build with:
 cargo build --target wasm32-unknown-unknown
 ```
 
+## WASM file I/O support
+
+NOVAS expects to open binary data files in some code paths (for example `cio_ra.bin`, and optionally JPL ephemeris files used through `ephem_open`).
+
+For `wasm32-unknown-unknown`, this crate provides an internal virtual file layer so those C `fopen`/`fread`/`fseek` calls work without host filesystem access.
+
+- `cio_ra.bin` is generated during build from upstream `CIO_RA.TXT` and embedded automatically.
+- Additional files can be bundled in Rust and registered at runtime:
+
+```rust
+// Example: bundle a JPL binary ephemeris in your wasm build.
+const DE440: &[u8] = include_bytes!("../data/de440.bin");
+
+novas::register_virtual_file("de440.bin", DE440);
+
+// Then pass the same filename to NOVAS ephemeris APIs, e.g. ephem_open.
+```
+
+On native targets, `register_virtual_file` is a no-op and NOVAS reads from the host filesystem.
+
 ## WASM test
 
-This crate includes a `wasm-bindgen-test` smoke test to ensure NOVAS FFI calls execute correctly in a WASM environment.
+This crate includes parity tests on both native and WASM targets. They compare Rust FFI outputs against a checked-in baseline generated from the upstream C implementation (native runs the fuller parity surface; WASM validates the shared core outputs).
 
-Run it with:
+Regenerate the baseline (only when you intentionally update it):
+
+```bash
+./scripts/generate_parity_baseline.sh
+```
+
+Run native parity:
+
+```bash
+cargo test --test parity_against_c
+```
+
+Run WASM parity:
 
 ```bash
 cargo test --target wasm32-unknown-unknown --test wasm_bindgen_smoke
+```
+
+Run WASM virtual-file I/O coverage (verifies registered in-memory file bytes are used by NOVAS C `fopen`/`fread`/`fseek` path):
+
+```bash
+cargo test --target wasm32-unknown-unknown --test wasm_virtual_file
 ```
 
 The test executes through `wasm-bindgen-test-runner` and `node`, so no Selenium/WebDriver setup is required.
