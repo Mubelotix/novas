@@ -4,7 +4,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 const NOVAS_URL: &str = "https://ascl.net/assets/codes/NOVAS/novasc3.1.zip";
 const NOVAS_ARCHIVE_NAME: &str = "novasc3.1.zip";
@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let cio_ra_bin_path = generate_cio_ra_bin(&source_dir, &out_dir)?;
 	generate_bindings(&source_dir, &out_dir, &host_target)?;
 	generate_root_reexports(&out_dir)?;
-	generate_convenience_api(&out_dir)?;
+	generate_convenience_api(&source_dir, &out_dir)?;
 	let mut emscripten_toolchain = None;
 
 	let c_target = if target_arch == "wasm32" {
@@ -220,11 +220,13 @@ fn generate_bindings(source_dir: &Path, out_dir: &Path, host_target: &str) -> Re
 		.header(header.to_string_lossy())
 		.clang_arg(include_arg)
 		.clang_arg(target_arg)
+		.clang_arg("-fparse-all-comments")
 		.allowlist_file(".*novas\\.h")
 		.allowlist_file(".*novascon\\.h")
 		.allowlist_file(".*solarsystem\\.h")
 		.allowlist_file(".*nutation\\.h")
 		.allowlist_file(".*eph_manager\\.h")
+		.generate_comments(true)
 		.layout_tests(false)
 		.parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
 		.generate()
@@ -241,10 +243,11 @@ struct FunctionSig {
 	ret: Option<String>,
 }
 
-fn generate_convenience_api(out_dir: &Path) -> Result<(), Box<dyn Error>> {
+fn generate_convenience_api(source_dir: &Path, out_dir: &Path) -> Result<(), Box<dyn Error>> {
 	let bindings_path = out_dir.join("bindings.rs");
 	let bindings_source = fs::read_to_string(&bindings_path)?;
 	let signatures = parse_function_signatures(&bindings_source);
+	let docs = extract_function_docs(source_dir)?;
 
 	let mut generated = String::new();
 	generated.push_str("// Auto-generated convenience API.\n");
@@ -253,15 +256,19 @@ fn generate_convenience_api(out_dir: &Path) -> Result<(), Box<dyn Error>> {
 	let mut count = 0usize;
 	for sig in &signatures {
 		if let Some(wrapper) = generate_scalar_io_wrapper(sig) {
-			generated.push_str(&wrapper);
+			generated.push_str(&with_doc_comment(&sig.name, docs.get(&sig.name), &wrapper));
 			generated.push('\n');
 			count += 1;
 		} else if let Some(wrapper) = generate_non_scalar_ref_wrapper(sig) {
-			generated.push_str(&wrapper);
+			generated.push_str(&with_doc_comment(&sig.name, docs.get(&sig.name), &wrapper));
 			generated.push('\n');
 			count += 1;
 		} else {
-			generated.push_str(&generate_passthrough_wrapper(sig));
+			generated.push_str(&with_doc_comment(
+				&sig.name,
+				docs.get(&sig.name),
+				&generate_passthrough_wrapper(sig),
+			));
 			generated.push('\n');
 			count += 1;
 		}
@@ -273,6 +280,125 @@ fn generate_convenience_api(out_dir: &Path) -> Result<(), Box<dyn Error>> {
 
 	fs::write(out_dir.join("convenience.rs"), generated)?;
 	Ok(())
+}
+
+fn with_doc_comment(function_name: &str, doc: Option<&String>, code: &str) -> String {
+	let Some(doc) = doc else {
+		return code.to_string();
+	};
+
+	let mut out = String::new();
+	for line in doc.lines() {
+		if line.trim().is_empty() {
+			out.push_str("///\n");
+		} else {
+			out.push_str("/// ");
+			out.push_str(line.trim());
+			out.push('\n');
+		}
+	}
+	out.push_str("///\n");
+	out.push_str(&format!("/// See [`sys::{function_name}`].\n"));
+	out.push_str(code);
+	out
+}
+
+fn extract_function_docs(source_dir: &Path) -> Result<HashMap<String, String>, Box<dyn Error>> {
+	let files = ["novas.c", "novascon.c", "nutation.c", "solsys3.c", "readeph0.c"];
+	let mut docs = HashMap::new();
+
+	for file in files {
+		let path = source_dir.join(file);
+		if !path.exists() {
+			continue;
+		}
+
+		let content = fs::read_to_string(path)?;
+		let lines: Vec<&str> = content.lines().collect();
+		let mut i = 0usize;
+
+		while i < lines.len() {
+			let marker_line = lines[i].trim();
+			if !marker_line.starts_with("/********") || !marker_line.ends_with("*/") {
+				i += 1;
+				continue;
+			}
+
+			let marker = marker_line
+				.trim_start_matches('/')
+				.trim_end_matches("*/")
+				.trim();
+			let function_name = marker.trim_start_matches('*').trim().to_string();
+			if function_name.is_empty() {
+				i += 1;
+				continue;
+			}
+
+			let mut j = i + 1;
+			while j < lines.len() && !lines[j].trim_start().starts_with("/*") {
+				j += 1;
+			}
+			if j >= lines.len() {
+				i += 1;
+				continue;
+			}
+
+			let mut comment_lines = Vec::new();
+			while j < lines.len() {
+				let c = lines[j].trim_end();
+				comment_lines.push(c);
+				if c.trim_end().ends_with("*/") {
+					break;
+				}
+				j += 1;
+			}
+
+			if let Some(purpose) = extract_purpose_from_comment(&comment_lines) {
+				docs.entry(function_name).or_insert(purpose);
+			}
+
+			i = j + 1;
+		}
+	}
+
+	Ok(docs)
+}
+
+fn extract_purpose_from_comment(comment_lines: &[&str]) -> Option<String> {
+	let mut in_purpose = false;
+	let mut collected = Vec::new();
+
+	for raw in comment_lines {
+		let line = raw.trim().trim_start_matches('*').trim();
+		if !in_purpose {
+			if line == "PURPOSE:" {
+				in_purpose = true;
+			}
+			continue;
+		}
+
+		if line.is_empty() {
+			if !collected.is_empty() {
+				break;
+			}
+			continue;
+		}
+
+		if line.ends_with(':') {
+			break;
+		}
+
+		let clean = line.trim_start_matches('-').trim();
+		if !clean.is_empty() {
+			collected.push(clean.to_string());
+		}
+	}
+
+	if collected.is_empty() {
+		return None;
+	}
+
+	Some(collected.join(" "))
 }
 
 fn generate_root_reexports(out_dir: &Path) -> Result<(), Box<dyn Error>> {
