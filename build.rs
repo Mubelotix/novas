@@ -1,13 +1,10 @@
 use std::env;
 use std::error::Error;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::collections::{BTreeSet, HashMap};
 
-const NOVAS_URL: &str = "https://ascl.net/assets/codes/NOVAS/novasc3.1.zip";
-const NOVAS_ARCHIVE_NAME: &str = "novasc3.1.zip";
 const NOVAS_EXTRACTED_DIR: &str = "novasc3.1";
 const NOVAS_UPSTREAM_VERSION: &str = "3.1";
 const EMSDK_DEFAULT_VERSION: &str = "5.0.6";
@@ -32,22 +29,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let cache_dir = target_cache_dir(&manifest_dir)?;
 	fs::create_dir_all(&cache_dir)?;
 
-	let archive_path = cache_dir.join(NOVAS_ARCHIVE_NAME);
-	if !archive_path.exists() {
-		download_archive(&archive_path)?;
-	}
-
-	let extraction_root = out_dir.join("novas-upstream");
-	if extraction_root.exists() {
-		fs::remove_dir_all(&extraction_root)?;
-	}
-	fs::create_dir_all(&extraction_root)?;
-	extract_archive(&archive_path, &extraction_root)?;
-
-	let source_dir = extraction_root.join(NOVAS_EXTRACTED_DIR);
+	let source_dir = manifest_dir.join(NOVAS_EXTRACTED_DIR);
 	if !source_dir.exists() {
 		return Err(format!(
-			"expected source directory '{}' after extraction",
+			"expected source directory '{}' in workspace",
 			source_dir.display()
 		)
 		.into());
@@ -86,7 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	compile_c_library(&source_dir, c_target, emscripten_toolchain.as_ref());
 
 	println!("cargo:rustc-env=NOVAS_UPSTREAM_VERSION={NOVAS_UPSTREAM_VERSION}");
-	println!("cargo:rustc-env=NOVAS_ARCHIVE_PATH={}", archive_path.display());
+	println!("cargo:rustc-env=NOVAS_SOURCE_PATH={}", source_dir.display());
 	println!("cargo:rustc-env=NOVAS_CIO_RA_BIN_PATH={}", cio_ra_bin_path.display());
 
 	Ok(())
@@ -98,52 +83,6 @@ fn target_cache_dir(manifest_dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 	}
 
 	Ok(manifest_dir.join("target").join("novas-cache"))
-}
-
-fn download_archive(destination: &Path) -> Result<(), Box<dyn Error>> {
-	let response = minreq::get(NOVAS_URL).send()?;
-	if response.status_code != 200 {
-		return Err(format!("failed to download archive from {NOVAS_URL}: HTTP {}", response.status_code).into());
-	}
-	fs::write(destination, response.as_bytes())?;
-	Ok(())
-}
-
-fn download_file(url: &str, destination: &Path) -> Result<(), Box<dyn Error>> {
-	let response = minreq::get(url).send()?;
-	if response.status_code != 200 {
-		return Err(format!("failed to download file from {url}: HTTP {}", response.status_code).into());
-	}
-	fs::write(destination, response.as_bytes())?;
-	Ok(())
-}
-
-fn extract_archive(archive_path: &Path, extraction_root: &Path) -> Result<(), Box<dyn Error>> {
-	let archive_file = fs::File::open(archive_path)?;
-	let mut archive = zip::ZipArchive::new(archive_file)?;
-
-	for i in 0..archive.len() {
-		let mut entry = archive.by_index(i)?;
-		let Some(rel_path) = entry.enclosed_name().map(|p| p.to_owned()) else {
-			continue;
-		};
-
-		let out_path = extraction_root.join(rel_path);
-
-		if entry.is_dir() {
-			fs::create_dir_all(&out_path)?;
-			continue;
-		}
-
-		if let Some(parent) = out_path.parent() {
-			fs::create_dir_all(parent)?;
-		}
-
-		let mut out_file = fs::File::create(&out_path)?;
-		io::copy(&mut entry, &mut out_file)?;
-	}
-
-	Ok(())
 }
 
 fn apply_compatibility_patches(source_dir: &Path) -> Result<(), Box<dyn Error>> {
@@ -854,25 +793,25 @@ fn ensure_emsdk_root(cache_dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 		return Ok(emsdk_root);
 	}
 
-	let emsdk_zip = cache_dir.join(emsdk_zip_name(&version));
-	if !emsdk_zip.exists() {
-		download_file(&emsdk_zip_url(&version), &emsdk_zip)?;
-	}
+	let output = Command::new("git")
+		.arg("clone")
+		.arg("--depth")
+		.arg("1")
+		.arg("--branch")
+		.arg(&version)
+		.arg("https://github.com/emscripten-core/emsdk.git")
+		.arg(&emsdk_root)
+		.output()?;
 
-	let staging = cache_dir.join("emsdk-extract-staging");
-	if staging.exists() {
-		fs::remove_dir_all(&staging)?;
+	if !output.status.success() {
+		return Err(format!(
+			"failed to clone emsdk {version} into '{}':\nstdout:\n{}\nstderr:\n{}",
+			emsdk_root.display(),
+			String::from_utf8_lossy(&output.stdout),
+			String::from_utf8_lossy(&output.stderr)
+		)
+		.into());
 	}
-	fs::create_dir_all(&staging)?;
-	extract_archive(&emsdk_zip, &staging)?;
-
-	let extracted = staging.join(emsdk_extracted_dir(&version));
-	if !extracted.exists() {
-		return Err(format!("emsdk archive did not contain '{}'", emsdk_extracted_dir(&version)).into());
-	}
-
-	fs::rename(&extracted, &emsdk_root)?;
-	fs::remove_dir_all(&staging)?;
 
 	Ok(emsdk_root)
 }
@@ -886,18 +825,6 @@ fn install_and_activate_emsdk(emsdk_root: &Path) -> Result<(), Box<dyn Error>> {
 
 fn emsdk_version() -> String {
 	env::var("NOVAS_EMSDK_VERSION").unwrap_or_else(|_| EMSDK_DEFAULT_VERSION.to_string())
-}
-
-fn emsdk_zip_url(version: &str) -> String {
-	format!("https://github.com/emscripten-core/emsdk/archive/refs/tags/{version}.zip")
-}
-
-fn emsdk_zip_name(version: &str) -> String {
-	format!("emsdk-{version}.zip")
-}
-
-fn emsdk_extracted_dir(version: &str) -> String {
-	format!("emsdk-{version}")
 }
 
 fn run_emsdk_python(emsdk_root: &Path, args: &[&str]) -> Result<(), Box<dyn Error>> {

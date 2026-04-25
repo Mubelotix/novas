@@ -18,8 +18,6 @@ embedded-cio-ra = []
 [build-dependencies]
 bindgen = "0.72"
 cc = "1.1"
-minreq = { version = "2", default-features = false, features = ["https-native"] }
-zip = { version = "8", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

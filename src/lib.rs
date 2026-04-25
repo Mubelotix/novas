@@ -19,8 +19,12 @@ include!(concat!(env!("OUT_DIR"), "/convenience.rs"));
 /// Upstream NOVAS C version used by this crate.
 pub const NOVAS_UPSTREAM_VERSION: &str = env!("NOVAS_UPSTREAM_VERSION");
 
-/// Absolute path to the cached upstream NOVAS archive used for this build.
-pub const NOVAS_ARCHIVE_PATH: &str = env!("NOVAS_ARCHIVE_PATH");
+/// Absolute path to the bundled upstream NOVAS source directory used for this build.
+pub const NOVAS_SOURCE_PATH: &str = env!("NOVAS_SOURCE_PATH");
+
+/// Deprecated compatibility alias for `NOVAS_SOURCE_PATH`.
+#[deprecated(note = "Use NOVAS_SOURCE_PATH")]
+pub const NOVAS_ARCHIVE_PATH: &str = NOVAS_SOURCE_PATH;
 
 /// Registers a virtual file for the wasm32-unknown-unknown runtime.
 ///
