@@ -1,6 +1,6 @@
 [package]
 name = "novas"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 license = "MIT"
 description = "Rust bindings to United States Naval Observatory's NOVAS C3.1 astrometry library"
