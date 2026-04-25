@@ -39,7 +39,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 	}
 
 	apply_compatibility_patches(&source_dir)?;
-	let cio_ra_bin_path = generate_cio_ra_bin(&source_dir, &out_dir)?;
+	let generate_embedded_cio = target_arch == "wasm32"
+		&& target_os == "unknown"
+		&& env::var_os("CARGO_FEATURE_EMBEDDED_CIO_RA").is_some();
+
+	let cio_ra_bin_path = if generate_embedded_cio {
+		Some(generate_cio_ra_bin(&source_dir, &out_dir)?)
+	} else {
+		None
+	};
 	generate_bindings(&source_dir, &out_dir, &host_target)?;
 	generate_root_reexports(&out_dir)?;
 	generate_convenience_api(&source_dir, &out_dir)?;
@@ -72,7 +80,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 	println!("cargo:rustc-env=NOVAS_UPSTREAM_VERSION={NOVAS_UPSTREAM_VERSION}");
 	println!("cargo:rustc-env=NOVAS_SOURCE_PATH={}", source_dir.display());
-	println!("cargo:rustc-env=NOVAS_CIO_RA_BIN_PATH={}", cio_ra_bin_path.display());
+	if let Some(path) = cio_ra_bin_path {
+		println!("cargo:rustc-env=NOVAS_CIO_RA_BIN_PATH={}", path.display());
+	}
 
 	Ok(())
 }

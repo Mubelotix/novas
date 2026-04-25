@@ -3,13 +3,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_FILE="${1:-$ROOT_DIR/tests/data/parity_expected.txt}"
-NOVAS_URL="https://ascl.net/assets/codes/NOVAS/novasc3.1.zip"
+NOVAS_DIR="$ROOT_DIR/novasc3.1"
+
+if [[ ! -d "$NOVAS_DIR" ]]; then
+  echo "expected vendored NOVAS sources at $NOVAS_DIR" >&2
+  exit 1
+fi
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
-
-curl -L -o "$tmp_dir/novasc3.1.zip" "$NOVAS_URL"
-unzip -q "$tmp_dir/novasc3.1.zip" -d "$tmp_dir"
 
 cat > "$tmp_dir/parity.c" <<'EOF'
 #include <stdio.h>
@@ -43,13 +45,13 @@ int main(void) {
 EOF
 
 cc -std=c99 \
-  -I "$tmp_dir/novasc3.1" \
+  -I "$NOVAS_DIR" \
   "$tmp_dir/parity.c" \
-  "$tmp_dir/novasc3.1/novas.c" \
-  "$tmp_dir/novasc3.1/novascon.c" \
-  "$tmp_dir/novasc3.1/nutation.c" \
-  "$tmp_dir/novasc3.1/solsys3.c" \
-  "$tmp_dir/novasc3.1/readeph0.c" \
+  "$NOVAS_DIR/novas.c" \
+  "$NOVAS_DIR/novascon.c" \
+  "$NOVAS_DIR/nutation.c" \
+  "$NOVAS_DIR/solsys3.c" \
+  "$NOVAS_DIR/readeph0.c" \
   -lm \
   -o "$tmp_dir/parity"
 
