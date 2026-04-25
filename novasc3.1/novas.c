@@ -3128,9 +3128,9 @@ short int sidereal_time (double jd_high, double jd_low,
    For mean sidereal time, subtract the equation of the equinoxes.
 */
 
-         ha_eq -= (eqeq / 240.0);
+          ha_eq -= (eqeq / 3600.0);
 
-         ha_eq = fmod (ha_eq, 360.0) / 15.0;
+          ha_eq = fmod (ha_eq, 360.0) / 15.0;
          if (ha_eq < 0.0)
             ha_eq += 24.0;
          *gst = ha_eq;

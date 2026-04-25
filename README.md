@@ -19,6 +19,7 @@ This crate provides two layers of abstraction:
 We treat astronomical accuracy as a non-negotiable requirement.
 
 - **Upstream Logic**: All scientific algorithms remain in the original, battle-tested C source.
+- **Tracked Upstream Patches**: This repository includes patches for [known NOVAS C3.1 issues](https://aa.usno.navy.mil/software/novas_faq).
 - **Continuous Validation**: Every commit is tested against USNO reference outputs on both x86_64 and WASM targets.
 - **No Hidden Magic**: Final binaries contain zero AI-generated logic; AI was used solely to map the FFI surface area.
 
