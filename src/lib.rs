@@ -156,6 +156,36 @@ mod wasm_c_runtime_shims {
 	}
 
 	#[no_mangle]
+	pub extern "C" fn strcpy(destination: *mut c_char, source: *const c_char) -> *mut c_char {
+		if destination.is_null() || source.is_null() {
+			return destination;
+		}
+
+		let mut i = 0usize;
+		loop {
+			// SAFETY: caller must provide valid pointers as required by C strcpy.
+			let byte = unsafe { *source.add(i) };
+			// SAFETY: caller must provide enough writable space in destination.
+			unsafe { *destination.add(i) = byte };
+			if byte == 0 {
+				break;
+			}
+			i += 1;
+		}
+
+		destination
+	}
+
+	#[no_mangle]
+	pub extern "C" fn toupper(character: c_int) -> c_int {
+		if (b'a' as c_int..=b'z' as c_int).contains(&character) {
+			character - ((b'a' - b'A') as c_int)
+		} else {
+			character
+		}
+	}
+
+	#[no_mangle]
 	pub extern "C" fn fopen(path: *const c_char, mode: *const c_char) -> *mut c_void {
 		let Some(path) = c_string(path) else {
 			return ptr::null_mut();
